@@ -1,0 +1,27 @@
+# Environment files
+.env
+*.env
+.env.*
+
+# Local env folder
+envs/
+
+# n8n and runtime data
+n8n_data/
+state/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Databases
+*.sqlite
+*.db
+
+# macOS
+.DS_Store
+
+# Logs
+logs/
