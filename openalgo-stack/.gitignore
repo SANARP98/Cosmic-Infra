@@ -1,0 +1,57 @@
+venopenalgo
+.venv/
+.env
+openalgo.db
+*.db-shm
+*.db-wal
+.env
+.flaskenv
+*.pyc
+__pycache__/
+instance/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.python-version
+config.ini
+.venvv
+
+#DB Files, CSV Files and Log/Tmp Files
+
+*.egg-info/
+*.db
+*.sqlite
+*.log
+*.tmp
+checkpoint.txt
+checkpoints.json
+
+# Strategy encryption key
+db/strategy_encryption.key
+
+# CSV Files (except symbols.csv)
+*.csv
+!symbols.csv
+!all_symbols.csv
+
+# Environments 
+.env 
+.venv 
+env/ 
+venv/ 
+ENV/ 
+env.bak/ 
+venv.bak/ 
+
+# Node modules
+/node_modules/
+
+# Build output
+/dist/
+/build/
+/.next/
+/out/
+
+# Tailwind CSS output
+# **/output.css

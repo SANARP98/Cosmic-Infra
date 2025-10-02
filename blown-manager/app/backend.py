@@ -504,5 +504,4 @@ async def api_restore_snapshot(name: str):
 # ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    # Run the modular app assembly so the new routers and settings are used.
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8002)
+    uvicorn.run(app, host="0.0.0.0", port=8002)
