@@ -37,7 +37,9 @@ services:
     command: >
       tunnel --no-autoupdate run
       --url http://traefik:80
-      --token eyJhIjoiODZjMDczM2ZjYjBhYzY3MDg5MmRhM2RiMjMxZTU4ODEiLCJ0IjoiNTVjMTBkZDUtZmQyZC00MWI5LWJiZjctZDI1ZDdhZDVmNjY4IiwicyI6Ik56UTRNekF4WkRZdFl6Qm1ZaTAwTVRsa0xUaGlOak10T1RVMVlUSTJZV0kzWldRMiJ9
+      --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    env_file:
+      - .env
     depends_on:
       - traefik
     networks:
