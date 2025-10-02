@@ -499,9 +499,54 @@ async def api_restore_snapshot(name: str):
     log_event("snapshot_restored", {"name": name, "restored_files": restored})
     return {"ok": True, "restored_files": restored}
 
+@app.get("/api/project/{name}/env")
+async def api_get_env(name: str):
+    """Get the .env file content for a project"""
+    ensure_dir(PROJECTS_DIR, "projects")
+    proj_dir = project_path(name)
+    env_file = proj_dir / ".env"
+
+    if not env_file.exists():
+        return {"exists": False, "content": ""}
+
+    try:
+        content = env_file.read_text()
+        return {"exists": True, "content": content}
+    except Exception as e:
+        logger.error(f"Error reading .env for {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to read .env file: {e}")
+
+@app.post("/api/project/{name}/env")
+async def api_save_env(name: str, payload: Dict[str, Any] = Body(...)):
+    """Save the .env file content for a project"""
+    ensure_dir(PROJECTS_DIR, "projects")
+    proj_dir = project_path(name)
+    env_file = proj_dir / ".env"
+    content = payload.get("content", "")
+
+    # Backup existing .env if it exists
+    if env_file.exists():
+        backup_file(env_file)
+
+    try:
+        # Validate content (basic check for dangerous commands)
+        if any(dangerous in content for dangerous in ["$(", "`", "rm -rf", "sudo"]):
+            raise HTTPException(status_code=400, detail="Invalid content detected in .env file")
+
+        # Write atomically
+        tmp_file = env_file.with_name(f".{env_file.name}.tmp")
+        tmp_file.write_text(content)
+        os.replace(tmp_file, env_file)
+
+        log_event("env_updated", {"project": name, "size": len(content)})
+        return {"ok": True, "message": f".env file updated for {name}"}
+    except Exception as e:
+        logger.error(f"Error writing .env for {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save .env file: {e}")
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Run
 # ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
