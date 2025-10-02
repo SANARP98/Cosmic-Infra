@@ -72,6 +72,9 @@ services:
   # OpenAlgo (Zerodha)
   # ────────────────
   openalgo_zerodha:
+    build:
+      context: ./openalgo-stack
+      dockerfile: Dockerfile
     image: "openalgo:latest"
     container_name: "openalgo-zerodha"
     restart: always
@@ -130,7 +133,7 @@ services:
   # Python Project Runners
   # ────────────────
   project1:
-    image: python:uv
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm
     container_name: project1-runner
     working_dir: /usr/src/app
     command: ["uv", "run", "--with-requirements=requirements.txt", "python", "main.py"]
@@ -144,7 +147,7 @@ services:
     logging: *default-logging
 
   project2:
-    image: python:uv
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm
     container_name: project2-runner
     working_dir: /usr/src/app
     command: ["uv", "run", "--with-requirements=requirements.txt", "python", "main.py"]
