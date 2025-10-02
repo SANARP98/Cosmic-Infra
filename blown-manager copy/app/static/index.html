@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cosmic-Infra Manager Pro</title>
+<meta name="color-scheme" content="dark">
+<style>
+  /* ====== Design tokens ====== */
+  :root{
+    --bg: #070a16;
+    --panel: rgba(22,28,50,.6);
+    --panel-strong: rgba(22,28,50,.85);
+    --card: rgba(18,24,45,.55);
+    --card-hover: rgba(18,24,45,.75);
+    --stroke: rgba(110,124,170,.2);
+    --muted: #9fb0e8;
+    --text: #e9ecfb;
+    --brand: #6ea8fe;
+    --brand-2: #9a7bff;
+    --danger: #ff6b6b;
+    --success: #40c057;
+    --warn: #ffd166;
+    --shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-lg: 22px;
+    --blur: 16px;
+    --speed: .25s;
+  }
+  *{ box-sizing:border-box }
+  html,body{ height:100% }
+  body{
+    margin:0;
+    color:var(--text);
+    background:
+      radial-gradient(1200px 1200px at -10% -10%, rgba(106,117,255,.12), transparent 60%),
+      radial-gradient(1200px 1200px at 110% 110%, rgba(90,180,255,.12), transparent 60%),
+      var(--bg);
+    font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+    letter-spacing:.2px;
+  }
+
+  /* ====== Top bar ====== */
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    display:flex; align-items:center; gap:10px;
+    padding:10px 14px;
+    border-bottom:1px solid var(--stroke);
+    background: linear-gradient(180deg, rgba(9,12,24,.8), rgba(9,12,24,.55));
+    backdrop-filter: blur(14px);
+  }
+  .app-title{
+    display:flex; align-items:center; gap:10px; font-weight:700;
+    letter-spacing:.4px
+  }
+  .logo{
+    width:28px; height:28px; border-radius:10px;
+    background: conic-gradient(from 210deg, var(--brand), var(--brand-2));
+    box-shadow: var(--shadow);
+  }
+  .pill{
+    padding:2px 8px; border:1px solid var(--stroke); border-radius:999px;
+    color:var(--muted); font-size:12px;
+    background: rgba(120,140,220,.08);
+  }
+  .spacer{ flex:1 }
+
+  /* ====== Buttons & inputs ====== */
+  .btn{
+    appearance:none; border:1px solid var(--stroke); color:var(--text);
+    background: var(--panel); border-radius: var(--radius-sm);
+    padding:8px 10px; font-weight:600; cursor:pointer; transition: all var(--speed) ease;
+    box-shadow: var(--shadow);
+  }
+  .btn:hover{ transform: translateY(-1px); background: var(--panel-strong) }
+  .btn:active{ transform: translateY(0) }
+  .btn.icon{ display:flex; align-items:center; gap:8px }
+  .btn.brand{ border-color: transparent; background: linear-gradient(180deg, rgba(110,168,254,.25), rgba(154,123,255,.2)); }
+  .btn.danger{ border-color:#a03040; background: rgba(255,107,107,.12) }
+  .btn.ghost{ background: transparent }
+  .btn-switch{
+    display:inline-flex; gap:6px; padding:3px; border-radius:999px; background: rgba(255,255,255,.06); border:1px solid var(--stroke)
+  }
+  .btn-switch button{ padding:6px 10px }
+  .btn-switch .active{ background: rgba(110,168,254,.18); border-color:transparent }
+
+  .search{
+    position:relative;
+    display:flex; align-items:center; gap:8px;
+    background: rgba(255,255,255,.05);
+    border:1px solid var(--stroke); border-radius:10px; padding:6px 10px; min-width:260px;
+  }
+  .search input{
+    outline:none; border:0; background:transparent; color:var(--text);
+    width:100%;
+  }
+  .kbd{ font-size:11px; opacity:.7; border:1px solid var(--stroke); padding:1px 6px; border-radius:6px }
+
+  /* ====== Layout ====== */
+  .wrap{
+    display:grid; grid-template-columns: 320px 1fr; gap:16px; padding:14px; align-items:start;
+  }
+  @media (max-width: 1020px){ .wrap{ grid-template-columns: 1fr } }
+
+  .panel{
+    background: var(--panel);
+    border:1px solid var(--stroke);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(var(--blur));
+  }
+
+  /* Library */
+  .library{
+    position:sticky; top:68px;
+    max-height: calc(100vh - 86px);
+    overflow:auto; padding:12px;
+  }
+  .library h3{ margin:0 0 10px 0; font-size:13px; color:var(--muted); letter-spacing:.3px }
+  .lib-item{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:8px 10px; margin-bottom:8px; border:1px dashed var(--stroke); border-radius:10px;
+    background: rgba(255,255,255,.03);
+  }
+  .lib-item .name{ cursor:grab }
+  .chip{ font-size:11px; color:var(--muted) }
+
+  /* Projects grid */
+  .grid{
+    display:grid; gap:14px;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  }
+
+  .card{
+    border:1px solid var(--stroke);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    backdrop-filter: blur(var(--blur));
+    transition: transform var(--speed) ease, background var(--speed) ease;
+    overflow:hidden;
+  }
+  .card:hover{ transform: translateY(-2px); background: var(--card-hover) }
+  .card-head{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:12px 14px; border-bottom:1px solid var(--stroke);
+  }
+  .title{ display:flex; align-items:center; gap:10px; font-weight:700 }
+  .health{
+    width:10px; height:10px; border-radius:50%; box-shadow:0 0 0 3px rgba(255,255,255,.04) inset;
+  }
+  .h-ok{ background: var(--success) }
+  .h-warn{ background: var(--warn) }
+  .h-bad{ background: var(--danger) }
+  .h-unk{ background: #718096 }
+
+  .card-body{ padding:12px 14px }
+  .drop{
+    border:2px dashed var(--stroke); border-radius:12px; padding:18px; text-align:center;
+    color:var(--muted); margin-bottom:10px; transition: border-color var(--speed), background var(--speed)
+  }
+  .drop.dragover{ background: rgba(110,168,254,.08); border-color: rgba(110,168,254,.5) }
+
+  .files{ margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px }
+  .file-row{
+    display:flex; align-items:center; gap:10px; justify-content:space-between;
+    border:1px dashed var(--stroke); padding:8px 10px; border-radius:10px;
+  }
+  .file-row .meta{ font-size:12px; color:var(--muted) }
+  .file-row .symlink{ color: var(--brand) }
+
+  .skeleton{
+    height:36px; border-radius:10px; background: linear-gradient(90deg, rgba(255,255,255,.05), rgba(255,255,255,.08), rgba(255,255,255,.05));
+    background-size: 200% 100%; animation: load 1.3s linear infinite;
+  }
+  @keyframes load{ to{ background-position: -200% 0 } }
+
+  /* ====== Event drawer ====== */
+  .drawer{
+    position:fixed; bottom:16px; right:16px; width:340px; max-height:44vh; padding:10px;
+    overflow:auto; background: var(--panel); border:1px solid var(--stroke); border-radius:14px; box-shadow: var(--shadow);
+    display:none;
+  }
+  .event{ font-size:12px; padding:6px 8px; border-bottom:1px dotted var(--stroke); opacity:.9 }
+  .event strong{ color:#d2d9ff }
+
+  /* ====== Toasts / modals ====== */
+  .toasts{ position: fixed; top:16px; right:16px; display:flex; flex-direction:column; gap:10px; z-index:100 }
+  .toast{
+    background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(255,255,255,.04));
+    border:1px solid var(--stroke); border-left:4px solid var(--brand);
+    padding:10px 12px; border-radius:12px; box-shadow: var(--shadow);
+    animation: pop .2s ease-out;
+  }
+  .toast.error{ border-left-color: var(--danger) }
+  .toast.success{ border-left-color: var(--success) }
+  @keyframes pop{ from{ transform: translateY(-8px); opacity:0 } }
+
+  .modal-backdrop{
+    position:fixed; inset:0; background: rgba(0,0,0,.55); display:none; place-items:center; z-index:80;
+  }
+  .modal{
+    width:min(560px, 92vw); background: var(--panel); border:1px solid var(--stroke);
+    border-radius:16px; padding:16px; box-shadow: var(--shadow);
+  }
+  .modal footer{ display:flex; gap:10px; justify-content:flex-end; margin-top:12px }
+
+  /* ====== Tiny utility ====== */
+  .row{ display:flex; align-items:center; gap:8px }
+  .muted{ color:var(--muted) }
+  .right{ margin-left:auto }
+  .hidden{ display:none !important }
+</style>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="app-title">
+      <div class="logo" aria-hidden="true"></div>
+      <div>
+        Cosmic-Infra Manager <span class="pill">Pro</span>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="search">
+      <svg width="16" height="16" fill="currentColor" style="opacity:.75"><path d="M11 11l4 4m-2-7a5 5 0 11-10 0 5 5 0 0110 0z"/></svg>
+      <input id="search" placeholder="Search files & projects ( / )">
+      <span class="kbd">?</span>
+    </div>
+
+    <div class="btn-switch" id="modeSwitch">
+      <button id="modeCopy" class="btn active">Copy</button>
+      <button id="modeSymlink" class="btn">Symlink</button>
+    </div>
+
+    <button id="refreshAll" class="btn icon brand">
+      <svg width="16" height="16" fill="currentColor"><path d="M3 8a5 5 0 019.8-1M13 8a5 5 0 01-9.8 1M2 2v4h4"/></svg>
+      Refresh
+    </button>
+
+    <button id="snapshotBtn" class="btn icon">
+      <svg width="16" height="16" fill="currentColor"><path d="M4 5h2l1-1h4l1 1h2v8H4z"/></svg>
+      Snapshot
+    </button>
+
+    <button id="healthBtn" class="btn icon">
+      <svg width="16" height="16" fill="currentColor"><path d="M8 2l2 4 4 .6-3 3 .8 4.4L8 11l-3.8 3 1-4.4-3-3L6 6.2z"/></svg>
+      Health
+    </button>
+
+    <button id="undoBtn" class="btn icon">
+      <svg width="16" height="16" fill="currentColor"><path d="M3 7l4-4v3h4a4 4 0 110 8H9"/></svg>
+      Undo
+    </button>
+
+    <button id="stopAll" class="btn danger icon">
+      <svg width="16" height="16" fill="currentColor"><path d="M3 3h10v10H3z"/></svg>
+      Stop All
+    </button>
+  </div>
+
+  <!-- Main layout -->
+  <div class="wrap">
+    <!-- Library -->
+    <aside class="panel library" aria-label="Library panel">
+      <h3 class="row">
+        <span>📚 Library</span>
+        <span class="right muted" id="libCount"></span>
+      </h3>
+      <div id="libraryList">
+        <!-- skeletons -->
+        <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span class="muted">Drag & drop onto any project card.</span>
+      </div>
+    </aside>
+
+    <!-- Projects -->
+    <main>
+      <div class="grid" id="projectsGrid">
+        <!-- skeleton cards -->
+        <div class="card"><div class="card-head"><div class="title"><span class="health h-unk"></span><span class="skeleton" style="width:140px"></span></div></div><div class="card-body"><div class="skeleton"></div><div class="skeleton" style="margin-top:8px"></div></div></div>
+        <div class="card"><div class="card-head"><div class="title"><span class="health h-unk"></span><span class="skeleton" style="width:140px"></span></div></div><div class="card-body"><div class="skeleton"></div><div class="skeleton" style="margin-top:8px"></div></div></div>
+        <div class="card"><div class="card-head"><div class="title"><span class="health h-unk"></span><span class="skeleton" style="width:140px"></span></div></div><div class="card-body"><div class="skeleton"></div><div class="skeleton" style="margin-top:8px"></div></div></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Event drawer -->
+  <section class="drawer" id="eventsDrawer" aria-live="polite">
+    <div class="row" style="justify-content:space-between; margin-bottom:6px">
+      <strong>Recent events</strong>
+      <button class="btn btn-small ghost" onclick="toggleDrawer(false)">Close</button>
+    </div>
+    <div id="eventList"></div>
+  </section>
+
+  <!-- Toasts -->
+  <div class="toasts" id="toasts"></div>
+
+  <!-- Confirm modal -->
+  <div class="modal-backdrop" id="confirmBackdrop" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h3 id="confirmTitle" style="margin:0 0 6px 0">Confirm</h3>
+      <p id="confirmMsg" class="muted" style="margin:0 0 10px 0"></p>
+      <footer>
+        <button class="btn ghost" onclick="confirmClose(false)">Cancel</button>
+        <button class="btn danger" id="confirmOk">Confirm</button>
+      </footer>
+    </div>
+  </div>
+
+<script>
+/* ===========================
+   Helpers & UX
+=========================== */
+let currentMode = 'copy';
+let libCache = [];
+let filterQuery = '';
+
+const $ = (q, root=document)=>root.querySelector(q);
+const $$ = (q, root=document)=>Array.from(root.querySelectorAll(q));
+
+function toast(text, type='info', timeout=2600){
+  const wrap = $('#toasts');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = text;
+  wrap.appendChild(el);
+  setTimeout(()=>el.remove(), timeout);
+}
+
+function toggleDrawer(show){
+  $('#eventsDrawer').style.display = show ? 'block' : 'none';
+}
+
+function kbdInit(){
+  // / focuses search, e toggles events, r refresh, u undo
+  window.addEventListener('keydown', (e)=>{
+    if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
+    if (e.key === '/'){ e.preventDefault(); $('#search').focus(); }
+    if (e.key.toLowerCase() === 'e'){ toggleDrawer($('#eventsDrawer').style.display!=='block'); loadEvents(); }
+    if (e.key.toLowerCase() === 'r'){ refreshAll(); }
+    if (e.key.toLowerCase() === 'u'){ doUndo(); }
+  });
+}
+
+function confirmModal(message, title='Please confirm'){
+  return new Promise(resolve=>{
+    $('#confirmTitle').textContent = title;
+    $('#confirmMsg').textContent = message;
+    $('#confirmBackdrop').style.display = 'grid';
+    const ok = $('#confirmOk');
+    const done = (val)=>{ $('#confirmBackdrop').style.display='none'; ok.onclick=null; resolve(val); };
+    ok.onclick = ()=>done(true);
+    $('#confirmBackdrop').onclick = (e)=>{ if(e.target.id==='confirmBackdrop') done(false) };
+  });
+}
+
+/* ===========================
+   API
+=========================== */
+async function jget(u){ const r = await fetch(u); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+async function jpost(u,b){ const r = await fetch(u,{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(b||{})}); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+async function jdel(u){ const r = await fetch(u,{method:'DELETE'}); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+
+/* ===========================
+   Library
+=========================== */
+function libItem(f){
+  const div = document.createElement('div');
+  div.className = 'lib-item';
+  const sizeKb = (f.size/1024).toFixed(1);
+  div.innerHTML = `
+    <div class="name" draggable="true">📄 ${f.name}</div>
+    <span class="chip">${sizeKb}KB</span>
+  `;
+  div.querySelector('.name').addEventListener('dragstart', (e)=>{
+    e.dataTransfer.setData('text/plain', f.name);
+  });
+  return div;
+}
+
+async function loadLibrary(){
+  try{
+    const data = await jget('/api/library');
+    libCache = data.files || [];
+    $('#libCount').textContent = `${libCache.length} files`;
+    renderLibrary();
+  }catch(e){ toast('Library load failed', 'error'); }
+}
+
+function renderLibrary(){
+  const list = $('#libraryList');
+  list.innerHTML = '';
+  const filtered = libCache.filter(f => !filterQuery || f.name.toLowerCase().includes(filterQuery));
+  if(!filtered.length){
+    list.innerHTML = `<div class="muted">No library files match “${filterQuery}”.</div>`;
+    return;
+  }
+  filtered.forEach(f => list.appendChild(libItem(f)));
+}
+
+/* ===========================
+   Projects grid
+=========================== */
+function healthBadge(health){
+  if(!health) return 'h-unk';
+  if(health.healthy) return 'h-ok';
+  if(health.status==='no_heartbeat') return 'h-unk';
+  if(health.status==='stale') return 'h-warn';
+  return 'h-bad';
+}
+
+function dropZone(project){
+  const dz = document.createElement('div');
+  dz.className = 'drop';
+  dz.innerHTML = `Drop <b>.py</b> here <span class="muted">— Mode: ${currentMode}</span>`;
+  dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', ()=>dz.classList.remove('dragover'));
+  dz.addEventListener('drop', async e=>{
+    e.preventDefault(); dz.classList.remove('dragover');
+    const filename = e.dataTransfer.getData('text/plain');
+    try{
+      await jpost('/api/assign', { project, filename, mode: currentMode });
+      toast(`Assigned ${filename} → ${project}`, 'success');
+      await renderProjects();
+    }catch(err){ toast('Assign failed', 'error'); }
+  });
+  return dz;
+}
+
+function fileRow(project, f){
+  const li = document.createElement('li');
+  const sizeKb = (f.size/1024).toFixed(1);
+  li.className = 'file-row';
+  li.innerHTML = `
+    <div class="row">
+      <span>${f.is_symlink ? '<span class="symlink">🔗</span>' : '📄'}</span>
+      <strong>${f.name}</strong>
+      <span class="meta">${sizeKb}KB • ${f.checksum}</span>
+    </div>
+    <div class="row">
+      <button class="btn danger">Remove</button>
+    </div>
+  `;
+  li.querySelector('.btn.danger').onclick = async ()=>{
+    const ok = await confirmModal(`Remove ${f.name}? This will gracefully stop the process first.`, 'Remove file');
+    if(!ok) return;
+    try{
+      await jdel(`/api/project/${project}/file/${encodeURIComponent(f.name)}`);
+      toast(`Removed ${f.name}`, 'success'); renderProjects();
+    }catch(e){ toast('Remove failed', 'error'); }
+  };
+  return li;
+}
+
+async function renderProjects(){
+  const grid = $('#projectsGrid');
+  grid.innerHTML = '';
+  try{
+    const data = await jget('/api/projects');
+    data.projects.forEach(async proj=>{
+      const card = document.createElement('section'); card.className = 'card';
+      const hClass = healthBadge(proj.health);
+      const statusTip = proj.health?.message || (proj.health?.healthy ? 'running' : 'unknown');
+
+      card.innerHTML = `
+        <div class="card-head">
+          <div class="title">
+            <span class="health ${hClass}" title="${statusTip}"></span>
+            <span>${proj.name}</span>
+            <span class="muted">(${proj.file_count} files)</span>
+          </div>
+          <div class="row">
+            <button class="btn ghost" data-act="clear">Clear</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- dz -->
+        </div>
+      `;
+
+      // actions
+      card.querySelector('[data-act="clear"]').onclick = async ()=>{
+        const ok = await confirmModal(`Clear all scripts from ${proj.name}? Files will be backed up.`, 'Clear project');
+        if(!ok) return;
+        try{
+          const res = await jpost(`/api/project/${proj.name}/clear`);
+          toast(`Cleared ${proj.name} – ${res.removed} file(s)`, 'success');
+          renderProjects();
+        }catch(e){ toast('Clear failed', 'error'); }
+      };
+
+      const content = card.querySelector('.card-body');
+      content.appendChild(dropZone(proj.name));
+
+      // files list
+      const ul = document.createElement('ul'); ul.className = 'files';
+      // skeleton rows while loading
+      ul.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+      content.appendChild(ul);
+
+      try{
+        const files = await jget(`/api/project/${proj.name}/files`);
+        ul.innerHTML = '';
+        files.files.forEach(f => ul.appendChild(fileRow(proj.name, f)));
+      }catch(e){
+        ul.innerHTML = `<div class="muted">Error loading files</div>`;
+      }
+
+      grid.appendChild(card);
+    });
+  }catch(e){
+    grid.innerHTML = `<div class="muted">Failed to load projects</div>`;
+  }
+}
+
+/* ===========================
+   Events & Health
+=========================== */
+async function loadEvents(){
+  try{
+    const data = await jget('/api/events?limit=18');
+    const list = $('#eventList'); list.innerHTML='';
+    (data.events || []).forEach(e=>{
+      const time = new Date(e.timestamp).toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = 'event';
+      div.innerHTML = `<strong>${time}</strong> <span class="muted">—</span> ${e.action}`;
+      list.appendChild(div);
+    });
+  }catch(e){ /* noop */ }
+}
+
+async function showHealth(){
+  try{
+    const health = await jget('/api/health');
+    const unhealthy = health.summary.unhealthy_projects;
+    if (unhealthy.length > 0) {
+      toast(`Unhealthy: ${unhealthy.join(', ')}`, 'error', 4000);
+    } else {
+      toast(`All ${health.summary.total_projects} projects healthy`, 'success');
+    }
+  }catch(e){ toast('Health check failed', 'error'); }
+}
+
+/* ===========================
+   Global actions & filters
+=========================== */
+function applySearch(){
+  filterQuery = $('#search').value.trim().toLowerCase();
+  renderLibrary();
+}
+
+async function refreshAll(){
+  await loadLibrary(); await renderProjects(); await loadEvents();
+  toast('Refreshed', 'success');
+}
+
+async function stopAll(){
+  const ok = await confirmModal(
+    'This will:\n1) Create kill markers\n2) Backup all files\n3) Remove scripts from projects\n\nYou can undo this action.',
+    'Stop ALL projects'
+  );
+  if(!ok) return;
+  try{
+    const res = await jpost('/api/stop_all');
+    toast(`Stopped all – ${res.removed} files (snapshot: ${res.snapshot})`, 'success', 4000);
+    renderProjects();
+  }catch(e){ toast('Stop all failed', 'error'); }
+}
+
+async function doUndo(){
+  try{
+    const res = await jpost('/api/undo');
+    toast(res.message || 'Undone', 'success');
+    renderProjects();
+  }catch(e){ toast('Nothing to undo', 'error'); }
+}
+
+async function createSnapshot(){
+  const name = prompt('Snapshot name (optional):') || undefined;
+  try{
+    const res = await jpost('/api/snapshots/create', { name });
+    toast(`Snapshot created: ${res.name}`, 'success');
+  }catch(e){ toast('Snapshot failed', 'error'); }
+}
+
+/* ===========================
+   Wire up
+=========================== */
+document.addEventListener('DOMContentLoaded', ()=>{
+  // buttons
+  $('#refreshAll').onclick = refreshAll;
+  $('#stopAll').onclick = stopAll;
+  $('#undoBtn').onclick = doUndo;
+  $('#snapshotBtn').onclick = createSnapshot;
+  $('#healthBtn').onclick = showHealth;
+
+  // mode switch
+  $('#modeCopy').onclick = ()=>{ currentMode='copy'; $('#modeCopy').classList.add('active'); $('#modeSymlink').classList.remove('active'); toast('Mode: Copy','success'); renderProjects(); };
+  $('#modeSymlink').onclick = ()=>{ currentMode='symlink'; $('#modeSymlink').classList.add('active'); $('#modeCopy').classList.remove('active'); toast('Mode: Symlink','success'); renderProjects(); };
+
+  // search
+  $('#search').addEventListener('input', ()=>{ applySearch(); });
+
+  // initial load
+  kbdInit();
+  refreshAll();
+
+  // periodic refresh of project health
+  setInterval(renderProjects, 30000);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,222 @@
+version: "3.9"
+name: cosmicinfra
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  edge:
+    external: true
+
+services:
+  traefik:
+    image: "traefik:v2.10"
+    container_name: "traefik2"
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--serversTransport.forwardingTimeouts.dialTimeout=30s"
+      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=30s"
+    ports:
+      - "80:80"
+      - "8080:8080"   # dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - edge
+    logging: *default-logging
+
+  cloudflared:
+    image: "cloudflare/cloudflared:latest"
+    container_name: "cloudflared-tunnel"
+    restart: unless-stopped
+    command: >
+      tunnel --no-autoupdate run
+      --url http://traefik:80
+      --token eyJhIjoiODZjMDczM2ZjYjBhYzY3MDg5MmRhM2RiMjMxZTU4ODEiLCJ0IjoiNTVjMTBkZDUtZmQyZC00MWI5LWJiZjctZDI1ZDdhZDVmNjY4IiwicyI6Ik56UTRNekF4WkRZdFl6Qm1ZaTAwTVRsa0xUaGlOak10T1RVMVlUSTJZV0kzWldRMiJ9
+    depends_on:
+      - traefik
+    networks:
+      - edge
+    logging: *default-logging
+
+  # ────────────────
+  # n8n
+  # ────────────────
+  n8n:
+    image: "docker.n8n.io/n8nio/n8n"
+    container_name: "n8n"
+    restart: always
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+    environment:
+      - N8N_HOST=n8n.rpinj.shop
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=https://n8n.rpinj.shop/
+    networks:
+      - edge
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=edge"
+      - "traefik.http.routers.n8n.rule=Host(`n8n.rpinj.shop`)"
+      - "traefik.http.routers.n8n.entrypoints=web"
+      - "traefik.http.routers.n8n.service=n8n-svc"
+      - "traefik.http.services.n8n-svc.loadbalancer.server.port=5678"
+    logging: *default-logging
+
+  # ────────────────
+  # OpenAlgo (Zerodha)
+  # ────────────────
+  openalgo_zerodha:
+    image: "openalgo:latest"
+    container_name: "openalgo-zerodha"
+    restart: always
+    volumes:
+      - ./db/zerodha:/app/db
+      - ./logs/zerodha:/app/logs
+      - ./envs/zerodha.env:/app/.env:ro
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
+      - WEBSOCKET_HOST=0.0.0.0
+      - WEBSOCKET_PORT=8765
+    networks:
+      - edge
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=edge"
+
+      # HTTP API router/service
+      - "traefik.http.routers.zerodha.rule=Host(`openalgo.rpinj.shop`)"
+      - "traefik.http.routers.zerodha.entrypoints=web"
+      - "traefik.http.routers.zerodha.service=zerodha-http-svc"
+      - "traefik.http.services.zerodha-http-svc.loadbalancer.server.port=5000"
+
+      # WebSocket router/service
+      - "traefik.http.routers.zerodha-ws.rule=Host(`openalgows.rpinj.shop`)"
+      - "traefik.http.routers.zerodha-ws.entrypoints=web"
+      - "traefik.http.routers.zerodha-ws.service=zerodha-ws-svc"
+      - "traefik.http.services.zerodha-ws-svc.loadbalancer.server.port=8765"
+    logging: *default-logging
+
+  # ────────────────
+  # code-server IDE
+  # ────────────────
+  code:
+    image: codercom/code-server:latest
+    container_name: code-server
+    restart: unless-stopped
+    environment:
+      - PASSWORD=prasu98
+    volumes:
+      - ./projects:/home/coder/projects
+      - ./envs:/home/coder/envs
+    networks:
+      - edge
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=edge"
+      - "traefik.http.routers.code.rule=Host(`code.rpinj.shop`)"
+      - "traefik.http.routers.code.entrypoints=web"
+      - "traefik.http.routers.code.service=code-svc"
+      - "traefik.http.services.code-svc.loadbalancer.server.port=8080"
+    logging: *default-logging
+
+  # ────────────────
+  # Python Project Runners
+  # ────────────────
+  project1:
+    image: python:uv
+    container_name: project1-runner
+    working_dir: /usr/src/app
+    command: ["uv", "run", "--with-requirements=requirements.txt", "python", "main.py"]
+    volumes:
+      - ./projects/project1:/usr/src/app
+      - ./logs/project1:/usr/src/app/logs
+    env_file:
+      - ./projects/project1/.env
+    networks:
+      - edge
+    logging: *default-logging
+
+  project2:
+    image: python:uv
+    container_name: project2-runner
+    working_dir: /usr/src/app
+    command: ["uv", "run", "--with-requirements=requirements.txt", "python", "main.py"]
+    volumes:
+      - ./projects/project2:/usr/src/app
+      - ./logs/project2:/usr/src/app/logs
+    env_file:
+      - ./projects/project2/.env
+    networks:
+      - edge
+    logging: *default-logging
+
+  # ────────────────
+  # Minimal manager (12000)
+  # ────────────────
+  # master-manager:
+  #   build:
+  #     context: ./minimal-manager
+  #   container_name: master-manager
+  #   environment:
+  #     - LIBRARY_DIR=/library
+  #     - PROJECTS_DIR=/projects
+  #   volumes:
+  #     - ./library:/library:ro
+  #     - ./projects:/projects
+  #   command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "12000"]
+  #   ports:
+  #     - "12000:12000"
+  #   restart: unless-stopped
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.docker.network=edge"
+  #     - "traefik.http.routers.mastermanager.rule=Host(`manager.rpinj.shop`)"
+  #     - "traefik.http.routers.mastermanager.entrypoints=web"
+  #     - "traefik.http.routers.mastermanager.service=mastermanager"
+  #     - "traefik.http.services.mastermanager.loadbalancer.server.port=12000"
+  #   networks:
+  #     - edge
+  #   logging: *default-logging
+
+  # ────────────────
+  # Cosmic Manager Pro (8002)
+  # ────────────────
+  cosmic-manager:
+    build:
+      context: ./blown-manager
+      dockerfile: Dockerfile
+    container_name: cosmic-manager-pro
+    environment:
+      - LIBRARY_DIR=/library
+      - PROJECTS_DIR=/projects
+      - STATE_DIR=/state
+      - PORT=8002
+      - HEARTBEAT_TTL=30
+      - STOP_GRACE_PERIOD=5
+      - MANAGER_API_KEY=prasu98
+    volumes:
+      - ./library:/library:ro
+      - ./projects:/projects
+      - ./state:/state
+      - ./logs:/logs:ro
+    ports:
+      - "8002:8002"
+    restart: unless-stopped
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.docker.network=edge"
+    #   - "traefik.http.routers.cosmicmanager.rule=Host(`pro.rpinj.shop`)"
+    #   - "traefik.http.routers.cosmicmanager.entrypoints=web"
+    #   - "traefik.http.routers.cosmicmanager.service=cosmicmanager"
+    #   - "traefik.http.services.cosmicmanager.loadbalancer.server.port=8002"
+    networks:
+      - edge
+    logging: *default-logging
