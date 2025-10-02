@@ -12,12 +12,14 @@ from pathlib import Path
 # ──────────────────────────────────────────────────────────────────────────────
 WATCH_DIR = Path(__file__).parent.resolve()
 STOP_DIR = WATCH_DIR / "stop"            # manager will drop *.kill files here
+PAUSE_MARKER = WATCH_DIR / "pause.marker"  # manager creates this to pause
 HEARTBEAT_FILE = WATCH_DIR / "heartbeat.json"
 
 # Map: filename -> subprocess.Popen
 processes = {}
 lock = threading.Lock()
 shutdown = False
+paused = False
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Discovery & process control
@@ -65,8 +67,30 @@ def reap_exited_children():
         with lock:
             processes.pop(name, None)
 
+def check_pause_state():
+    """Check if pause marker exists and update global state."""
+    global paused
+    was_paused = paused
+    paused = PAUSE_MARKER.exists()
+
+    # If we just got paused, stop all processes
+    if paused and not was_paused:
+        print("[INFO] Pause marker detected - stopping all processes...", flush=True)
+        with lock:
+            names = list(processes.keys())
+        for fname in names:
+            stop_process(fname, reason="paused")
+
+    # If we just got resumed, sync will restart them
+    if not paused and was_paused:
+        print("[INFO] Pause marker removed - resuming operations...", flush=True)
+
 def sync_processes():
-    """Start new files, stop deleted ones."""
+    """Start new files, stop deleted ones (unless paused)."""
+    # Don't start new processes if paused
+    if paused:
+        return
+
     current_files = {f.name: f for f in discover_python_files()}
 
     # Start newly added files
@@ -114,7 +138,8 @@ def check_kill_markers():
 def write_heartbeat_once():
     with lock:
         pids = {name: proc.pid for name, proc in processes.items()}
-    payload = {"ts": time.time(), "pids": pids, "status": "running"}
+    status = "paused" if paused else "running"
+    payload = {"ts": time.time(), "pids": pids, "status": status}
 
     # Atomic write to avoid partial reads
     tmp = HEARTBEAT_FILE.with_suffix(".json.tmp")
@@ -159,6 +184,7 @@ def main():
 
     # Main loop
     while not shutdown:
+        check_pause_state()
         sync_processes()
         reap_exited_children()
         check_kill_markers()

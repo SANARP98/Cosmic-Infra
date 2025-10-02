@@ -266,10 +266,13 @@ async def api_projects():
     projects = []
     for name in get_projects():
         health = check_project_health(name)
+        proj_dir = project_path(name)
+        pause_marker = proj_dir / "pause.marker"
         projects.append({
             "name": name,
             "health": health,
-            "file_count": len(list_py_files(project_path(name), include_main=False))
+            "file_count": len(list_py_files(proj_dir, include_main=False)),
+            "paused": pause_marker.exists()
         })
     return {"projects": projects}
 
@@ -543,6 +546,57 @@ async def api_save_env(name: str, payload: Dict[str, Any] = Body(...)):
     except Exception as e:
         logger.error(f"Error writing .env for {name}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save .env file: {e}")
+
+@app.get("/api/project/{name}/status")
+async def api_get_project_status(name: str):
+    """Get project pause status"""
+    ensure_dir(PROJECTS_DIR, "projects")
+    proj_dir = project_path(name)
+    pause_marker = proj_dir / "pause.marker"
+
+    return {
+        "paused": pause_marker.exists(),
+        "project": name
+    }
+
+@app.post("/api/project/{name}/pause")
+async def api_pause_project(name: str):
+    """Pause a project - creates pause.marker file"""
+    ensure_dir(PROJECTS_DIR, "projects")
+    proj_dir = project_path(name)
+    pause_marker = proj_dir / "pause.marker"
+
+    if pause_marker.exists():
+        return {"ok": True, "message": f"{name} is already paused", "paused": True}
+
+    try:
+        pause_marker.write_text(json.dumps({
+            "timestamp": datetime.now().isoformat(),
+            "reason": "manual_pause"
+        }))
+        log_event("project_paused", {"project": name})
+        return {"ok": True, "message": f"{name} paused", "paused": True}
+    except Exception as e:
+        logger.error(f"Error pausing {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to pause project: {e}")
+
+@app.post("/api/project/{name}/resume")
+async def api_resume_project(name: str):
+    """Resume a project - removes pause.marker file"""
+    ensure_dir(PROJECTS_DIR, "projects")
+    proj_dir = project_path(name)
+    pause_marker = proj_dir / "pause.marker"
+
+    if not pause_marker.exists():
+        return {"ok": True, "message": f"{name} is not paused", "paused": False}
+
+    try:
+        pause_marker.unlink()
+        log_event("project_resumed", {"project": name})
+        return {"ok": True, "message": f"{name} resumed", "paused": False}
+    except Exception as e:
+        logger.error(f"Error resuming {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to resume project: {e}")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Run
