@@ -134,33 +134,36 @@ services:
   # ────────────────
   # Python Project Runners
   # ────────────────
-  project1:
-    image: ghcr.io/astral-sh/uv:python3.12-bookworm
-    container_name: project1-runner
-    working_dir: /usr/src/app
-    command: ["uv", "run", "--with-requirements=requirements.txt", "python", "main.py"]
-    volumes:
-      - ./projects/project1:/usr/src/app
-      - ./logs/project1:/usr/src/app/logs
-    env_file:
-      - ./projects/project1/.env
-    networks:
-      - edge
-    logging: *default-logging
+  # NOTE: Projects are now managed internally by cosmic-manager
+  # No need for separate containers - all projects run inside cosmic-manager
+  #
+  # project1:
+  #   image: ghcr.io/astral-sh/uv:python3.12-bookworm
+  #   container_name: project1-runner
+  #   working_dir: /usr/src/app
+  #   command: ["uv", "run", "--with-requirements=requirements.txt", "python", "main.py"]
+  #   volumes:
+  #     - ./projects/project1:/usr/src/app
+  #     - ./logs/project1:/usr/src/app/logs
+  #   env_file:
+  #     - ./projects/project1/.env
+  #   networks:
+  #     - edge
+  #   logging: *default-logging
 
-  project2:
-    image: ghcr.io/astral-sh/uv:python3.12-bookworm
-    container_name: project2-runner
-    working_dir: /usr/src/app
-    command: ["uv", "run", "--with-requirements=requirements.txt", "python", "main.py"]
-    volumes:
-      - ./projects/project2:/usr/src/app
-      - ./logs/project2:/usr/src/app/logs
-    env_file:
-      - ./projects/project2/.env
-    networks:
-      - edge
-    logging: *default-logging
+  # project2:
+  #   image: ghcr.io/astral-sh/uv:python3.12-bookworm
+  #   container_name: project2-runner
+  #   working_dir: /usr/src/app
+  #   command: ["uv", "run", "--with-requirements=requirements.txt", "python", "main.py"]
+  #   volumes:
+  #     - ./projects/project2:/usr/src/app
+  #     - ./logs/project2:/usr/src/app/logs
+  #   env_file:
+  #     - ./projects/project2/.env
+  #   networks:
+  #     - edge
+  #   logging: *default-logging
 
   # ────────────────
   # Minimal manager (12000)

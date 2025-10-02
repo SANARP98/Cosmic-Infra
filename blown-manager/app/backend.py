@@ -6,12 +6,20 @@ import time
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+import logging
 
 from fastapi import FastAPI, HTTPException, Body, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
+
+from .process_manager import ProcessManager
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Config via environment
@@ -37,7 +45,28 @@ STATE_DIR.mkdir(exist_ok=True, parents=True)
 BACKUP_DIR.mkdir(exist_ok=True, parents=True)
 SNAPSHOTS_DIR.mkdir(exist_ok=True, parents=True)
 
-app = FastAPI(title="Cosmic-Infra Manager Pro", version="2.0")
+# Initialize process manager
+process_manager: Optional[ProcessManager] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown events"""
+    global process_manager
+    # Startup
+    logger.info("Starting Cosmic-Infra Manager Pro...")
+    process_manager = ProcessManager(PROJECTS_DIR)
+    process_manager.start_monitoring()
+    process_manager.discover_and_start_all()
+    logger.info("All projects started")
+    yield
+    # Shutdown
+    logger.info("Shutting down...")
+    if process_manager:
+        process_manager.stop_all()
+        process_manager.stop_monitoring()
+    logger.info("Shutdown complete")
+
+app = FastAPI(title="Cosmic-Infra Manager Pro", version="2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -260,6 +289,16 @@ async def api_library():
         })
     return {"files": files}
 
+@app.get("/library/{filename}")
+async def get_library_file(filename: str):
+    """Serve library file content for preview"""
+    file_path = LIBRARY_DIR / filename
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail=f"File {filename} not found in library")
+    if not str(file_path).startswith(str(LIBRARY_DIR)):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return FileResponse(file_path, media_type="text/plain")
+
 @app.get("/api/projects")
 async def api_projects():
     ensure_dir(PROJECTS_DIR, "projects")
@@ -268,11 +307,18 @@ async def api_projects():
         health = check_project_health(name)
         proj_dir = project_path(name)
         pause_marker = proj_dir / "pause.marker"
+
+        # Get process status from process manager
+        proc_status = {"running": False, "pid": None, "uptime": 0}
+        if process_manager:
+            proc_status = process_manager.get_project_status(name)
+
         projects.append({
             "name": name,
             "health": health,
             "file_count": len(list_py_files(proj_dir, include_main=False)),
-            "paused": pause_marker.exists()
+            "paused": pause_marker.exists(),
+            "process": proc_status
         })
     return {"projects": projects}
 
@@ -519,6 +565,25 @@ async def api_get_env(name: str):
         logger.error(f"Error reading .env for {name}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to read .env file: {e}")
 
+@app.get("/api/project/{name}/logs")
+async def api_get_logs(name: str, lines: int = Query(100, ge=1, le=10000)):
+    """Get the last N lines of logs for a project"""
+    ensure_dir(PROJECTS_DIR, "projects")
+    proj_dir = project_path(name)
+    log_file = proj_dir / "logs" / "main.log"
+
+    if not log_file.exists():
+        return {"logs": "", "lines": 0}
+
+    try:
+        with open(log_file, 'r') as f:
+            all_lines = f.readlines()
+            last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+            return {"logs": "".join(last_lines), "lines": len(last_lines), "total": len(all_lines)}
+    except Exception as e:
+        logger.error(f"Error reading logs for {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to read logs: {e}")
+
 @app.post("/api/project/{name}/env")
 async def api_save_env(name: str, payload: Dict[str, Any] = Body(...)):
     """Save the .env file content for a project"""
@@ -546,6 +611,72 @@ async def api_save_env(name: str, payload: Dict[str, Any] = Body(...)):
     except Exception as e:
         logger.error(f"Error writing .env for {name}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save .env file: {e}")
+
+@app.get("/api/project/{name}/requirements")
+async def api_get_requirements(name: str):
+    """Get the requirements.txt file content for a project"""
+    ensure_dir(PROJECTS_DIR, "projects")
+    proj_dir = project_path(name)
+    req_file = proj_dir / "requirements.txt"
+
+    if not req_file.exists():
+        return {"exists": False, "content": ""}
+
+    try:
+        content = req_file.read_text()
+        return {"exists": True, "content": content}
+    except Exception as e:
+        logger.error(f"Error reading requirements.txt for {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to read requirements.txt: {e}")
+
+@app.post("/api/project/{name}/requirements")
+async def api_save_requirements(name: str, payload: Dict[str, Any] = Body(...)):
+    """Save requirements.txt and run uv pip install"""
+    ensure_dir(PROJECTS_DIR, "projects")
+    proj_dir = project_path(name)
+    req_file = proj_dir / "requirements.txt"
+    content = payload.get("content", "")
+
+    # Backup existing requirements.txt if it exists
+    if req_file.exists():
+        backup_file(req_file)
+
+    try:
+        # Write requirements.txt
+        tmp_file = req_file.with_name(f".{req_file.name}.tmp")
+        tmp_file.write_text(content)
+        os.replace(tmp_file, req_file)
+
+        # Run uv pip install
+        install_result = {"success": False, "output": ""}
+        if content.strip():
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["uv", "pip", "install", "-r", str(req_file)],
+                    cwd=str(proj_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                )
+                install_result = {
+                    "success": result.returncode == 0,
+                    "output": result.stdout + result.stderr
+                }
+            except subprocess.TimeoutExpired:
+                install_result = {"success": False, "output": "Installation timeout (>120s)"}
+            except Exception as e:
+                install_result = {"success": False, "output": f"Installation error: {str(e)}"}
+
+        log_event("requirements_updated", {"project": name, "size": len(content)})
+        return {
+            "ok": True,
+            "message": f"requirements.txt updated for {name}",
+            "install": install_result
+        }
+    except Exception as e:
+        logger.error(f"Error writing requirements.txt for {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save requirements.txt: {e}")
 
 @app.get("/api/project/{name}/status")
 async def api_get_project_status(name: str):
@@ -597,6 +728,153 @@ async def api_resume_project(name: str):
     except Exception as e:
         logger.error(f"Error resuming {name}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to resume project: {e}")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Project Lifecycle Management
+# ──────────────────────────────────────────────────────────────────────────────
+@app.post("/api/project/{name}/start")
+async def api_start_project_process(name: str):
+    """Start a project's main.py process"""
+    if not process_manager:
+        raise HTTPException(status_code=500, detail="Process manager not initialized")
+
+    ensure_dir(PROJECTS_DIR, "projects")
+    project_path(name)  # Validate project exists
+
+    try:
+        success = process_manager.start_project(name)
+        if success:
+            log_event("project_started", {"project": name})
+            return {"ok": True, "message": f"{name} started"}
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to start {name}")
+    except Exception as e:
+        logger.error(f"Error starting {name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/project/{name}/stop")
+async def api_stop_project_process(name: str):
+    """Stop a project's main.py process"""
+    if not process_manager:
+        raise HTTPException(status_code=500, detail="Process manager not initialized")
+
+    try:
+        success = process_manager.stop_project(name)
+        if success:
+            log_event("project_stopped", {"project": name})
+            return {"ok": True, "message": f"{name} stopped"}
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to stop {name}")
+    except Exception as e:
+        logger.error(f"Error stopping {name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/project/{name}/restart")
+async def api_restart_project_process(name: str):
+    """Restart a project's main.py process"""
+    if not process_manager:
+        raise HTTPException(status_code=500, detail="Process manager not initialized")
+
+    try:
+        success = process_manager.restart_project(name)
+        if success:
+            log_event("project_restarted", {"project": name})
+            return {"ok": True, "message": f"{name} restarted"}
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to restart {name}")
+    except Exception as e:
+        logger.error(f"Error restarting {name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/project/create")
+async def api_create_project(payload: Dict[str, Any] = Body(...)):
+    """Create a new project"""
+    ensure_dir(PROJECTS_DIR, "projects")
+
+    project_name = payload.get("name", "").strip()
+    if not project_name or '/' in project_name or '\\' in project_name or '..' in project_name:
+        raise HTTPException(status_code=400, detail="Invalid project name")
+
+    proj_dir = PROJECTS_DIR / project_name
+    if proj_dir.exists():
+        raise HTTPException(status_code=409, detail=f"Project {project_name} already exists")
+
+    try:
+        # Create project directory structure
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "logs").mkdir(exist_ok=True)
+        (proj_dir / "stop").mkdir(exist_ok=True)
+
+        # Copy main.py template from project1 or create basic one
+        template_main = PROJECTS_DIR / "project1" / "main.py"
+        target_main = proj_dir / "main.py"
+
+        if template_main.exists():
+            import shutil
+            shutil.copy2(template_main, target_main)
+        else:
+            # Create basic main.py
+            target_main.write_text("""#!/usr/bin/env python3
+import time
+print("Project started")
+while True:
+    time.sleep(60)
+""")
+
+        # Create empty .env
+        (proj_dir / ".env").write_text("# Environment variables\n")
+
+        # Create empty requirements.txt
+        (proj_dir / "requirements.txt").write_text("# Python dependencies\n")
+
+        log_event("project_created", {"project": project_name})
+
+        # Auto-start the project
+        if process_manager:
+            process_manager.start_project(project_name)
+
+        return {"ok": True, "message": f"Project {project_name} created", "name": project_name}
+    except Exception as e:
+        logger.error(f"Error creating project {project_name}: {e}")
+        # Cleanup on failure
+        if proj_dir.exists():
+            import shutil
+            shutil.rmtree(proj_dir)
+        raise HTTPException(status_code=500, detail=f"Failed to create project: {e}")
+
+@app.delete("/api/project/{name}")
+async def api_delete_project(name: str):
+    """Delete a project completely"""
+    ensure_dir(PROJECTS_DIR, "projects")
+    proj_dir = project_path(name)
+
+    try:
+        # Stop the process first
+        if process_manager:
+            process_manager.stop_project(name)
+
+        # Create snapshot before deletion
+        snapshot_name = create_snapshot(f"before_delete_{name}")
+
+        # Move to backup instead of permanent delete
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_subdir = BACKUP_DIR / f"deleted_projects_{timestamp}"
+        backup_subdir.mkdir(exist_ok=True, parents=True)
+        backup_path = backup_subdir / name
+
+        shutil.move(str(proj_dir), str(backup_path))
+
+        log_event("project_deleted", {"project": name, "backup": str(backup_path), "snapshot": snapshot_name})
+
+        return {
+            "ok": True,
+            "message": f"Project {name} deleted",
+            "backup": str(backup_path),
+            "snapshot": snapshot_name
+        }
+    except Exception as e:
+        logger.error(f"Error deleting project {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete project: {e}")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Run

@@ -184,6 +184,54 @@
   .event{ font-size:12px; padding:6px 8px; border-bottom:1px dotted var(--stroke); opacity:.9 }
   .event strong{ color:#d2d9ff }
 
+  /* ====== File Preview Popup ====== */
+  .file-preview{
+    position: fixed; right:20px; top:50%; transform: translateY(-50%);
+    width: 400px; max-height: 70vh;
+    background: var(--panel-strong); border: 2px solid var(--brand);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    backdrop-filter: blur(var(--blur));
+    display: none; z-index: 200;
+    animation: slideIn .2s ease-out;
+  }
+  @keyframes slideIn{ from{ transform: translateY(-50%) translateX(30px); opacity:0 } }
+  .file-preview-header{
+    padding: 12px 14px; border-bottom: 1px solid var(--stroke);
+    display: flex; justify-content: space-between; align-items: center;
+    cursor: grab;
+  }
+  .file-preview-header:active{ cursor: grabbing }
+  .file-preview-content{
+    padding: 14px; max-height: calc(70vh - 50px); overflow-y: auto;
+    font-family: 'Courier New', monospace; font-size: 12px;
+    line-height: 1.6; white-space: pre-wrap; word-break: break-all;
+    background: rgba(0,0,0,.3); color: var(--text);
+  }
+
+  /* ====== Terminal Viewer ====== */
+  .terminal-viewer{
+    margin-top: 12px; border-top: 1px solid var(--stroke); padding-top: 12px;
+  }
+  .terminal-header{
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+  }
+  .terminal-header .title{
+    font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px;
+  }
+  .terminal-content{
+    background: rgba(0, 0, 0, 0.6); border: 1px solid var(--stroke);
+    border-radius: 8px; padding: 10px; font-family: 'Courier New', monospace;
+    font-size: 11px; line-height: 1.5; color: #00ff41;
+    max-height: 0; overflow: hidden; transition: max-height 0.3s ease;
+  }
+  .terminal-content.expanded{
+    max-height: 400px; overflow-y: auto;
+  }
+  .terminal-content::-webkit-scrollbar{ width: 8px; }
+  .terminal-content::-webkit-scrollbar-track{ background: rgba(0,0,0,.2); border-radius: 4px; }
+  .terminal-content::-webkit-scrollbar-thumb{ background: rgba(110,168,254,.3); border-radius: 4px; }
+  .terminal-content::-webkit-scrollbar-thumb:hover{ background: rgba(110,168,254,.5); }
+
   /* ====== Toasts / modals ====== */
   .toasts{ position: fixed; top:16px; right:16px; display:flex; flex-direction:column; gap:10px; z-index:100 }
   .toast{
@@ -236,7 +284,12 @@
       <button id="modeSymlink" class="btn">Symlink</button>
     </div>
 
-    <button id="refreshAll" class="btn icon brand">
+    <button id="createProjectBtn" class="btn icon brand">
+      <svg width="16" height="16" fill="currentColor"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+      New Project
+    </button>
+
+    <button id="refreshAll" class="btn icon">
       <svg width="16" height="16" fill="currentColor"><path d="M3 8a5 5 0 019.8-1M13 8a5 5 0 01-9.8 1M2 2v4h4"/></svg>
       Refresh
     </button>
@@ -302,13 +355,27 @@
   <!-- Toasts -->
   <div class="toasts" id="toasts"></div>
 
+  <!-- File Preview Popup -->
+  <div class="file-preview" id="filePreview">
+    <div class="file-preview-header">
+      <div style="display:flex; align-items:center; gap:8px">
+        <span>📄</span>
+        <strong id="previewFileName">file.py</strong>
+      </div>
+      <button class="btn ghost" onclick="closeFilePreview()" style="padding:4px 8px">×</button>
+    </div>
+    <div class="file-preview-content" id="previewContent">
+      <!-- file content will be loaded here -->
+    </div>
+  </div>
+
   <!-- Confirm modal -->
   <div class="modal-backdrop" id="confirmBackdrop" role="dialog" aria-modal="true">
     <div class="modal">
       <h3 id="confirmTitle" style="margin:0 0 6px 0">Confirm</h3>
       <p id="confirmMsg" class="muted" style="margin:0 0 10px 0"></p>
       <footer>
-        <button class="btn ghost" onclick="confirmClose(false)">Cancel</button>
+        <button class="btn ghost">Cancel</button>
         <button class="btn danger" id="confirmOk">Confirm</button>
       </footer>
     </div>
@@ -327,6 +394,56 @@
         <button class="btn ghost" onclick="closeEnvEditor()">Cancel</button>
         <button class="btn brand" id="saveEnvBtn">Save .env</button>
       </footer>
+    </div>
+  </div>
+
+  <!-- Edit requirements.txt modal -->
+  <div class="modal-backdrop" id="reqEditorBackdrop" role="dialog" aria-modal="true">
+    <div class="modal" style="width:min(720px, 92vw)">
+      <div class="row" style="justify-content:space-between; margin-bottom:10px">
+        <h3 id="reqEditorTitle" style="margin:0">Edit requirements.txt</h3>
+        <button class="btn ghost" onclick="closeReqEditor()">×</button>
+      </div>
+      <textarea id="reqEditorContent" placeholder="requests==2.31.0&#10;pandas==2.0.3&#10;numpy==1.24.3" style="width:100%; min-height:320px; padding:12px; border:1px solid var(--stroke); border-radius:10px; background:rgba(0,0,0,.3); color:var(--text); font-family:monospace; font-size:13px; resize:vertical"></textarea>
+      <p class="muted" style="margin:8px 0; font-size:12px">📦 Will auto-install with <code>uv pip install -r requirements.txt</code></p>
+      <div id="installOutput" style="display:none; margin:8px 0; padding:10px; background:rgba(0,0,0,.3); border-radius:8px; border:1px solid var(--stroke); font-family:monospace; font-size:11px; max-height:150px; overflow-y:auto"></div>
+      <footer>
+        <button class="btn ghost" onclick="closeReqEditor()">Cancel</button>
+        <button class="btn brand" id="saveReqBtn">Save & Install</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Create Project modal -->
+  <div class="modal-backdrop" id="createProjectBackdrop" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h3 style="margin:0 0 10px 0">Create New Project</h3>
+      <div style="margin-bottom:10px">
+        <label style="display:block; margin-bottom:4px; color:var(--muted); font-size:13px">Project Name</label>
+        <input id="newProjectName" type="text" placeholder="my-project" style="width:100%; padding:8px 10px; border:1px solid var(--stroke); border-radius:8px; background:rgba(0,0,0,.3); color:var(--text); font-size:14px">
+        <p class="muted" style="margin:6px 0 0 0; font-size:12px">Lowercase, alphanumeric, hyphens allowed</p>
+      </div>
+      <footer>
+        <button class="btn ghost" onclick="closeCreateProject()">Cancel</button>
+        <button class="btn brand" id="createProjectConfirmBtn">Create Project</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Logs Viewer modal -->
+  <div class="modal-backdrop" id="logsBackdrop" role="dialog" aria-modal="true">
+    <div class="modal" style="width:min(920px, 92vw); max-height:80vh">
+      <div class="row" style="justify-content:space-between; margin-bottom:10px">
+        <h3 id="logsTitle" style="margin:0">Logs</h3>
+        <div class="row" style="gap:8px">
+          <button class="btn ghost" id="refreshLogsBtn" title="Refresh logs">
+            <svg width="14" height="14" fill="currentColor"><path d="M3 8a5 5 0 019.8-1M13 8a5 5 0 01-9.8 1M2 2v4h4"/></svg>
+          </button>
+          <button class="btn ghost" onclick="closeLogs()">×</button>
+        </div>
+      </div>
+      <pre id="logsContent" style="background:rgba(0,0,0,.5); padding:12px; border-radius:8px; border:1px solid var(--stroke); overflow:auto; max-height:60vh; margin:0; font-family:monospace; font-size:12px; line-height:1.5; color:var(--text)">Loading logs...</pre>
+      <p class="muted" style="margin:8px 0 0 0; font-size:12px" id="logsInfo">Last 100 lines</p>
     </div>
   </div>
 
@@ -371,8 +488,15 @@ function confirmModal(message, title='Please confirm'){
     $('#confirmMsg').textContent = message;
     $('#confirmBackdrop').style.display = 'grid';
     const ok = $('#confirmOk');
-    const done = (val)=>{ $('#confirmBackdrop').style.display='none'; ok.onclick=null; resolve(val); };
+    const cancel = $('#confirmBackdrop').querySelector('.btn.ghost');
+    const done = (val)=>{
+      $('#confirmBackdrop').style.display='none';
+      ok.onclick=null;
+      cancel.onclick=null;
+      resolve(val);
+    };
     ok.onclick = ()=>done(true);
+    cancel.onclick = ()=>done(false);
     $('#confirmBackdrop').onclick = (e)=>{ if(e.target.id==='confirmBackdrop') done(false) };
   });
 }
@@ -395,9 +519,16 @@ function libItem(f){
     <div class="name" draggable="true">📄 ${f.name}</div>
     <span class="chip">${sizeKb}KB</span>
   `;
-  div.querySelector('.name').addEventListener('dragstart', (e)=>{
+  const nameEl = div.querySelector('.name');
+
+  // Click to preview
+  nameEl.addEventListener('click', ()=> openFilePreview(f.name));
+
+  // Drag from library
+  nameEl.addEventListener('dragstart', (e)=>{
     e.dataTransfer.setData('text/plain', f.name);
   });
+
   return div;
 }
 
@@ -485,28 +616,58 @@ async function renderProjects(){
       const hClass = healthBadge(proj.health);
       const statusTip = proj.health?.message || (proj.health?.healthy ? 'running' : 'unknown');
 
-      const pauseBtn = proj.paused
-        ? `<button class="btn ghost" data-act="resume" title="Resume project" style="color:var(--success)">
-             <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M6 3.5a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm4 0a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/></svg>
+      // Process status
+      const processRunning = proj.process?.running || false;
+      const uptime = proj.process?.uptime || 0;
+      const uptimeStr = uptime > 0 ? `${Math.floor(uptime/60)}m ${Math.floor(uptime%60)}s` : '';
+
+      const processBtn = processRunning
+        ? `<button class="btn ghost" data-act="stop-process" title="Stop main.py" style="color:var(--danger)">
+             <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5z"/></svg>
+           </button>
+           <button class="btn ghost" data-act="restart-process" title="Restart main.py">
+             <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
            </button>`
-        : `<button class="btn ghost" data-act="pause" title="Pause project" style="color:var(--warn)">
-             <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/></svg>
+        : `<button class="btn ghost" data-act="start-process" title="Start main.py" style="color:var(--success)">
+             <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>
            </button>`;
+
+      const pauseBtn = proj.paused
+        ? `<button class="btn ghost" data-act="resume" title="Resume scripts">▶</button>`
+        : `<button class="btn ghost" data-act="pause" title="Pause scripts">⏸</button>`;
 
       card.innerHTML = `
         <div class="card-head">
-          <div class="title">
-            <span class="health ${hClass}" title="${statusTip}"></span>
-            <span>${proj.name}</span>
-            <span class="muted">(${proj.file_count} files)</span>
-            ${proj.paused ? '<span class="muted" style="color:var(--warn)">⏸ Paused</span>' : ''}
-          </div>
-          <div class="row" style="gap:6px">
-            ${pauseBtn}
-            <button class="btn ghost" data-act="edit-env" title="Edit .env file">
-              <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
-            </button>
-            <button class="btn ghost" data-act="clear">Clear</button>
+          <div style="display:flex; justify-content:space-between; align-items:start; width:100%">
+            <div style="display:flex; flex-direction:column; gap:6px; flex:1">
+              <div class="title">
+                <span class="health ${hClass}" title="${statusTip}"></span>
+                <span>${proj.name}</span>
+                ${processRunning ? `<span class="muted" style="color:var(--success); font-size:11px">● ${uptimeStr}</span>` : ''}
+              </div>
+              <div style="display:flex; gap:8px; font-size:12px; color:var(--muted)">
+                <span>${proj.file_count} files</span>
+                ${proj.paused ? '<span style="color:var(--warn)">⏸ Paused</span>' : ''}
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px">
+              <div class="row" style="gap:4px">
+                ${processBtn}
+                ${pauseBtn}
+              </div>
+              <div class="row" style="gap:4px">
+                <button class="btn ghost" data-act="edit-env" title="Edit .env file">
+                  <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                </button>
+                <button class="btn ghost" data-act="edit-req" title="Edit requirements.txt">
+                  <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v13.5a.5.5 0 0 1-.777.416L8 13.101l-5.223 2.815A.5.5 0 0 1 2 15.5V2zm2-1a1 1 0 0 0-1 1v12.566l4.723-2.482a.5.5 0 0 1 .554 0L13 14.566V2a1 1 0 0 0-1-1H4z"/></svg>
+                </button>
+                <button class="btn ghost" data-act="clear" title="Clear all files">Clear</button>
+                <button class="btn danger ghost" data-act="delete" title="Delete project">
+                  <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="card-body">
@@ -515,6 +676,42 @@ async function renderProjects(){
       `;
 
       // actions
+      // Process control buttons
+      const startBtn = card.querySelector('[data-act="start-process"]');
+      const stopBtn = card.querySelector('[data-act="stop-process"]');
+      const restartBtn = card.querySelector('[data-act="restart-process"]');
+
+      if (startBtn) {
+        startBtn.onclick = async ()=>{
+          try{
+            await jpost(`/api/project/${proj.name}/start`);
+            toast(`${proj.name} started`, 'success');
+            renderProjects();
+          }catch(e){ toast('Start failed', 'error'); }
+        };
+      }
+
+      if (stopBtn) {
+        stopBtn.onclick = async ()=>{
+          try{
+            await jpost(`/api/project/${proj.name}/stop`);
+            toast(`${proj.name} stopped`, 'success');
+            renderProjects();
+          }catch(e){ toast('Stop failed', 'error'); }
+        };
+      }
+
+      if (restartBtn) {
+        restartBtn.onclick = async ()=>{
+          try{
+            await jpost(`/api/project/${proj.name}/restart`);
+            toast(`${proj.name} restarted`, 'success');
+            renderProjects();
+          }catch(e){ toast('Restart failed', 'error'); }
+        };
+      }
+
+      // Pause/Resume buttons
       const pauseButton = card.querySelector('[data-act="pause"]');
       const resumeButton = card.querySelector('[data-act="resume"]');
 
@@ -522,7 +719,7 @@ async function renderProjects(){
         pauseButton.onclick = async ()=>{
           try{
             await jpost(`/api/project/${proj.name}/pause`);
-            toast(`${proj.name} paused`, 'success');
+            toast(`${proj.name} scripts paused`, 'success');
             renderProjects();
           }catch(e){ toast('Pause failed', 'error'); }
         };
@@ -532,13 +729,14 @@ async function renderProjects(){
         resumeButton.onclick = async ()=>{
           try{
             await jpost(`/api/project/${proj.name}/resume`);
-            toast(`${proj.name} resumed`, 'success');
+            toast(`${proj.name} scripts resumed`, 'success');
             renderProjects();
           }catch(e){ toast('Resume failed', 'error'); }
         };
       }
 
       card.querySelector('[data-act="edit-env"]').onclick = ()=> openEnvEditor(proj.name);
+      card.querySelector('[data-act="edit-req"]').onclick = ()=> openReqEditor(proj.name);
 
       card.querySelector('[data-act="clear"]').onclick = async ()=>{
         const ok = await confirmModal(`Clear all scripts from ${proj.name}? Files will be backed up.`, 'Clear project');
@@ -548,6 +746,16 @@ async function renderProjects(){
           toast(`Cleared ${proj.name} – ${res.removed} file(s)`, 'success');
           renderProjects();
         }catch(e){ toast('Clear failed', 'error'); }
+      };
+
+      card.querySelector('[data-act="delete"]').onclick = async ()=>{
+        const ok = await confirmModal(`Delete project "${proj.name}" completely?\n\nThis will:\n• Stop the process\n• Create a backup snapshot\n• Move project to backups folder\n\nYou can restore from backups if needed.`, 'Delete Project');
+        if(!ok) return;
+        try{
+          const res = await jdel(`/api/project/${proj.name}`);
+          toast(`${proj.name} deleted (backup: ${res.snapshot})`, 'success', 4000);
+          renderProjects();
+        }catch(e){ toast('Delete failed', 'error'); }
       };
 
       const content = card.querySelector('.card-body');
@@ -566,6 +774,46 @@ async function renderProjects(){
       }catch(e){
         ul.innerHTML = `<div class="muted">Error loading files</div>`;
       }
+
+      // Terminal viewer
+      const terminalDiv = document.createElement('div');
+      terminalDiv.className = 'terminal-viewer';
+      terminalDiv.innerHTML = `
+        <div class="terminal-header">
+          <div class="title">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2zm9.5 3A1.5 1.5 0 0 0 10 3.5h-4A1.5 1.5 0 0 0 4.5 5v6A1.5 1.5 0 0 0 6 12.5h4a1.5 1.5 0 0 0 1.5-1.5V5z"/>
+            </svg>
+            <span>Terminal Output</span>
+          </div>
+          <button class="btn ghost" data-toggle-terminal style="padding:4px 8px; font-size:11px">
+            <span class="toggle-text">Show</span>
+            <svg width="12" height="12" fill="currentColor" class="chevron" style="transition:transform .2s">
+              <path d="M1.5 4.5l6 6 6-6"/>
+            </svg>
+          </button>
+        </div>
+        <div class="terminal-content" data-project="${proj.name}">
+          <div class="muted" style="color:#666">No output yet. Terminal will auto-update when process runs.</div>
+        </div>
+      `;
+
+      const toggleBtn = terminalDiv.querySelector('[data-toggle-terminal]');
+      const terminalContent = terminalDiv.querySelector('.terminal-content');
+      const toggleText = toggleBtn.querySelector('.toggle-text');
+      const chevron = toggleBtn.querySelector('.chevron');
+
+      toggleBtn.onclick = () => {
+        const isExpanded = terminalContent.classList.toggle('expanded');
+        toggleText.textContent = isExpanded ? 'Hide' : 'Show';
+        chevron.style.transform = isExpanded ? 'rotate(180deg)' : 'rotate(0deg)';
+
+        if (isExpanded) {
+          loadTerminalLogs(proj.name);
+        }
+      };
+
+      content.appendChild(terminalDiv);
 
       grid.appendChild(card);
     });
@@ -683,16 +931,241 @@ async function saveEnvFile(){
 }
 
 /* ===========================
+   requirements.txt Editor
+=========================== */
+let currentReqProject = null;
+
+async function openReqEditor(projectName){
+  currentReqProject = projectName;
+  $('#reqEditorTitle').textContent = `Edit requirements.txt for ${projectName}`;
+  $('#reqEditorBackdrop').style.display = 'grid';
+  $('#installOutput').style.display = 'none';
+
+  try{
+    const res = await jget(`/api/project/${projectName}/requirements`);
+    $('#reqEditorContent').value = res.content || '';
+  }catch(e){
+    toast('Failed to load requirements.txt', 'error');
+    $('#reqEditorContent').value = '';
+  }
+}
+
+function closeReqEditor(){
+  $('#reqEditorBackdrop').style.display = 'none';
+  currentReqProject = null;
+}
+
+async function saveReqFile(){
+  if (!currentReqProject) return;
+
+  const content = $('#reqEditorContent').value;
+  const saveBtn = $('#saveReqBtn');
+  const outputDiv = $('#installOutput');
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Installing...';
+
+  try{
+    const res = await jpost(`/api/project/${currentReqProject}/requirements`, { content });
+
+    // Show installation output
+    if (res.install) {
+      outputDiv.style.display = 'block';
+      if (res.install.success) {
+        outputDiv.style.borderColor = 'var(--success)';
+        outputDiv.innerHTML = `<div style="color:var(--success); margin-bottom:4px">✓ Installation successful</div><pre style="margin:0; white-space:pre-wrap">${res.install.output}</pre>`;
+      } else {
+        outputDiv.style.borderColor = 'var(--danger)';
+        outputDiv.innerHTML = `<div style="color:var(--danger); margin-bottom:4px">✗ Installation failed</div><pre style="margin:0; white-space:pre-wrap">${res.install.output}</pre>`;
+      }
+    }
+
+    toast(`requirements.txt saved for ${currentReqProject}`, res.install?.success ? 'success' : 'error');
+
+    if (res.install?.success) {
+      setTimeout(() => closeReqEditor(), 2000);
+    }
+  }catch(e){
+    toast('Failed to save requirements.txt', 'error');
+    outputDiv.style.display = 'block';
+    outputDiv.style.borderColor = 'var(--danger)';
+    outputDiv.innerHTML = `<div style="color:var(--danger)">Error: ${e.message || 'Unknown error'}</div>`;
+  }finally{
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save & Install';
+  }
+}
+
+/* ===========================
+   Create Project
+=========================== */
+function openCreateProject(){
+  $('#createProjectBackdrop').style.display = 'grid';
+  $('#newProjectName').value = '';
+  setTimeout(() => $('#newProjectName').focus(), 100);
+}
+
+function closeCreateProject(){
+  $('#createProjectBackdrop').style.display = 'none';
+}
+
+async function createNewProject(){
+  const name = $('#newProjectName').value.trim().toLowerCase();
+
+  // Validate project name
+  if (!name) {
+    toast('Project name is required', 'error');
+    return;
+  }
+
+  if (!/^[a-z0-9-]+$/.test(name)) {
+    toast('Invalid name: use lowercase letters, numbers, and hyphens only', 'error');
+    return;
+  }
+
+  try{
+    const res = await jpost('/api/project/create', { name });
+    toast(`Project "${name}" created!`, 'success');
+    closeCreateProject();
+    await refreshAll();
+  }catch(e){
+    toast(`Failed to create project: ${e.message || 'Unknown error'}`, 'error');
+  }
+}
+
+/* ===========================
+   Terminal Viewer
+=========================== */
+let terminalRefreshInterval = null;
+
+async function loadTerminalLogs(projectName){
+  const terminalEl = document.querySelector(`.terminal-content[data-project="${projectName}"]`);
+  if (!terminalEl) return;
+
+  try{
+    const res = await jget(`/api/project/${projectName}/logs?lines=50`);
+    if (res.logs && res.logs.trim()) {
+      terminalEl.innerHTML = `<pre style="margin:0; white-space:pre-wrap; word-break:break-word">${res.logs}</pre>`;
+      // Auto scroll to bottom
+      terminalEl.scrollTop = terminalEl.scrollHeight;
+    } else {
+      terminalEl.innerHTML = `<div class="muted" style="color:#666">No output yet. Terminal will auto-update when process runs.</div>`;
+    }
+  }catch(e){
+    terminalEl.innerHTML = `<div style="color:#ff6b6b">Error loading logs</div>`;
+  }
+}
+
+function startTerminalAutoRefresh(){
+  // Auto-refresh expanded terminals every 3 seconds
+  if (terminalRefreshInterval) clearInterval(terminalRefreshInterval);
+
+  terminalRefreshInterval = setInterval(() => {
+    const expandedTerminals = document.querySelectorAll('.terminal-content.expanded');
+    expandedTerminals.forEach(term => {
+      const projectName = term.getAttribute('data-project');
+      if (projectName) loadTerminalLogs(projectName);
+    });
+  }, 3000);
+}
+
+/* ===========================
+   Logs Viewer (Modal - kept for compatibility)
+=========================== */
+let currentLogsProject = null;
+
+async function openLogs(projectName){
+  currentLogsProject = projectName;
+  $('#logsTitle').textContent = `Logs: ${projectName}`;
+  $('#logsBackdrop').style.display = 'grid';
+  await loadLogs();
+}
+
+async function loadLogs(){
+  if (!currentLogsProject) return;
+
+  try{
+    const res = await jget(`/api/project/${currentLogsProject}/logs?lines=100`);
+    $('#logsContent').textContent = res.logs || 'No logs available';
+    $('#logsInfo').textContent = `Showing ${res.lines} of ${res.total || res.lines} lines`;
+  }catch(e){
+    $('#logsContent').textContent = 'Error loading logs';
+    toast('Failed to load logs', 'error');
+  }
+}
+
+function closeLogs(){
+  $('#logsBackdrop').style.display = 'none';
+  currentLogsProject = null;
+}
+
+/* ===========================
+   File Preview Popup
+=========================== */
+let isDraggingFromPreview = false;
+let currentPreviewFile = null;
+
+async function openFilePreview(filename){
+  currentPreviewFile = filename;
+  const popup = $('#filePreview');
+  const header = popup.querySelector('.file-preview-header');
+  $('#previewFileName').textContent = filename;
+  $('#previewContent').textContent = 'Loading...';
+
+  popup.style.display = 'block';
+
+  // Load file content
+  try{
+    const res = await fetch(`/library/${encodeURIComponent(filename)}`);
+    if (!res.ok) throw new Error('Failed to load file');
+    const content = await res.text();
+    $('#previewContent').textContent = content;
+  }catch(e){
+    $('#previewContent').textContent = 'Error loading file content';
+    toast('Failed to load file', 'error');
+  }
+
+  // Make header draggable to drag file from preview
+  header.setAttribute('draggable', 'true');
+  header.ondragstart = (e)=>{
+    isDraggingFromPreview = true;
+    e.dataTransfer.setData('text/plain', filename);
+  };
+  header.ondragend = ()=>{
+    isDraggingFromPreview = false;
+  };
+}
+
+function closeFilePreview(){
+  $('#filePreview').style.display = 'none';
+  currentPreviewFile = null;
+  isDraggingFromPreview = false;
+}
+
+// Global keyboard listener to close preview on any key (when preview is open)
+window.addEventListener('keydown', (e)=>{
+  const previewOpen = $('#filePreview').style.display === 'block';
+  if (previewOpen && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
+    e.preventDefault();
+    closeFilePreview();
+  }
+});
+
+/* ===========================
    Wire up
 =========================== */
 document.addEventListener('DOMContentLoaded', ()=>{
   // buttons
+  $('#createProjectBtn').onclick = openCreateProject;
   $('#refreshAll').onclick = refreshAll;
   $('#stopAll').onclick = stopAll;
   $('#undoBtn').onclick = doUndo;
   $('#snapshotBtn').onclick = createSnapshot;
   $('#healthBtn').onclick = showHealth;
   $('#saveEnvBtn').onclick = saveEnvFile;
+  $('#saveReqBtn').onclick = saveReqFile;
+  $('#createProjectConfirmBtn').onclick = createNewProject;
+  $('#refreshLogsBtn').onclick = loadLogs;
 
   // mode switch
   $('#modeCopy').onclick = ()=>{ currentMode='copy'; $('#modeCopy').classList.add('active'); $('#modeSymlink').classList.remove('active'); toast('Mode: Copy','success'); renderProjects(); };
@@ -703,10 +1176,19 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   // Close modals on backdrop click
   $('#envEditorBackdrop').onclick = (e)=>{ if(e.target.id==='envEditorBackdrop') closeEnvEditor() };
+  $('#reqEditorBackdrop').onclick = (e)=>{ if(e.target.id==='reqEditorBackdrop') closeReqEditor() };
+  $('#createProjectBackdrop').onclick = (e)=>{ if(e.target.id==='createProjectBackdrop') closeCreateProject() };
+  $('#logsBackdrop').onclick = (e)=>{ if(e.target.id==='logsBackdrop') closeLogs() };
+
+  // Enter key in create project input
+  $('#newProjectName').addEventListener('keypress', (e)=>{ if(e.key==='Enter') createNewProject() });
 
   // initial load
   kbdInit();
   refreshAll();
+
+  // Start terminal auto-refresh
+  startTerminalAutoRefresh();
 
   // periodic refresh of project health
   setInterval(renderProjects, 30000);
