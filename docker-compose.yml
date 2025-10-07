@@ -89,6 +89,8 @@ services:
       - FLASK_DEBUG=0
       - WEBSOCKET_HOST=0.0.0.0
       - WEBSOCKET_PORT=8765
+    ports:
+      - "5001:5000"
     networks:
       - edge
     labels:
